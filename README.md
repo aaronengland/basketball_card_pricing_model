@@ -334,7 +334,7 @@ Lookahead bias happens when a model accidentally uses information from the futur
 
 ### How did you address overfitting?
 
-I used multiple mechanisms:
+Overfitting is when a model memorizes the training data too closely — it performs well on data it has already seen but poorly on new, unseen data. To combat this, I used multiple mechanisms:
 
 - **Early stopping** on validation RMSE (triggered at round 18)
 - **Regularization** — min_child_weight=30, gamma=0.1, L2 lambda=1.0, L1 alpha=0.1
