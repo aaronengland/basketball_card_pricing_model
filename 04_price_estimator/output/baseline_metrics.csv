@@ -1,4 +1,4 @@
 Method,N,MAE,MAPE (%),RMSE,Median AE,R2
-Exact Match Only,10969,102.19,63.23,687.93,16.47,0.7971
-Subject+Grade Median,13251,687.68,208.34,36344.87,54.7,-0.0002
-Combined (all fallbacks),13317,590.69,87.59,36234.41,19.97,0.001
+Exact Match Only,12625,158.72,121.71,822.06,39.0,0.6375
+Subject+Grade Median,15929,620.53,237.57,33153.11,65.0,-0.0001
+Combined (all fallbacks),16058,571.43,147.78,33006.38,40.49,0.0007
