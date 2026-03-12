@@ -2,7 +2,7 @@
 
 > **Goal**: Predict how much a graded basketball card will sell for, using historical sales data.
 
-This project builds a machine learning pipeline to estimate the sale price of 2018 graded basketball cards. We walk through every step — from exploring the raw data, to engineering features, to training a model — and compare our ML approach against a simple "lookup the last sale" baseline.
+This project builds a machine learning pipeline to estimate the sale price of 2018 graded basketball cards. I walk through every step — from exploring the raw data, to engineering features, to training a model — and compare my ML approach against a simple "lookup the last sale" baseline.
 
 > **Terminology note**: Throughout this document, **"txn"** is shorthand for **"transaction"** — a single recorded sale of a card at a specific price and date.
 
@@ -24,7 +24,7 @@ This project builds a machine learning pipeline to estimate the sale price of 20
 
 ## The Dataset
 
-We're working with **100,000 sales records** of graded basketball cards from 2018, spanning **May 2018 through February 2022**.
+The dataset contains **100,000 sales records** of graded basketball cards from 2018, spanning **May 2018 through February 2022**.
 
 Each record captures:
 
@@ -36,7 +36,7 @@ Each record captures:
 | `variety` | The specific variant (e.g., "Silver", or null for base cards) |
 | `card_number` | The number printed on the card |
 | `date` | When the sale happened |
-| `price` | What it sold for (our prediction target) |
+| `price` | What it sold for (the prediction target) |
 | `grade` | The condition rating (1–10 scale) |
 | `grading_company` | Who graded it (PSA, BGS, SGC, etc.) |
 
@@ -50,11 +50,11 @@ Each record captures:
 
 > **Notebook**: [`01_eda/notebook.ipynb`](01_eda/notebook.ipynb)
 
-Before building anything, we took a close look at the data to understand what we're working with. Here's what stood out:
+Before building anything, I took a close look at the data to understand what I was working with. Here's what stood out:
 
 ### Prices are wildly skewed
 
-Most cards sell for under $100, but a few sell for hundreds of thousands — even millions. The typical (median) sale is **$95**, the average is **$460**, and the highest sale in the dataset is **$4 million**. Because of this extreme skew, we apply a **log transformation** to prices before modeling — this brings the distribution closer to normal and prevents outliers from dominating the model.
+Most cards sell for under $100, but a few sell for hundreds of thousands — even millions. The typical (median) sale is **$95**, the average is **$460**, and the highest sale in the dataset is **$4 million**. Because of this extreme skew, I apply a **log transformation** to prices before modeling — this brings the distribution closer to normal and prevents outliers from dominating the model.
 
 <p align="center">
   <img src="01_eda/output/target_distribution.png" alt="Price distribution before and after log transform" width="700"/>
@@ -98,7 +98,7 @@ Card sales surged dramatically starting in 2020, likely driven by the COVID-era 
 
 ### Top players and brands
 
-A handful of players and brands dominate transaction volume. This concentration means our model will have much more data for popular cards than for niche ones.
+A handful of players and brands dominate transaction volume. This concentration means the model will have much more data for popular cards than for niche ones.
 
 <p align="center">
   <img src="01_eda/output/top_subjects.png" alt="Top subjects (players) by transaction count" width="700"/>
@@ -118,8 +118,8 @@ Some players' card values moved dramatically over the dataset's timeframe, refle
 
 ### Data quality issues
 
-- **~45% of the `variety` field is null** — these are base cards with no special variant. We fill these with "base" during preprocessing.
-- **Case inconsistencies**: The `subject` and `brand` fields have duplicates caused by inconsistent capitalization (e.g., "LeBron James" vs "LEBRON JAMES") — 231 duplicate subjects and 139 duplicate brands. We normalize these during preprocessing.
+- **~45% of the `variety` field is null** — these are base cards with no special variant. I fill these with "base" during preprocessing.
+- **Case inconsistencies**: The `subject` and `brand` fields have duplicates caused by inconsistent capitalization (e.g., "LeBron James" vs "LEBRON JAMES") — 231 duplicate subjects and 139 duplicate brands. I normalize these during preprocessing.
 
 <p align="center">
   <img src="01_eda/output/propna.png" alt="Missing value proportions" width="700"/>
@@ -135,7 +135,7 @@ Some players' card values moved dramatically over the dataset's timeframe, refle
 
 > **Notebook**: [`02_data_split/notebook.ipynb`](02_data_split/notebook.ipynb)
 
-We split the data **by date** (not randomly) to simulate real-world conditions — the model only sees past sales and must predict future ones. This prevents "lookahead bias," where the model accidentally learns from data it wouldn't have in production.
+I split the data **by date** (not randomly) to simulate real-world conditions — the model only sees past sales and must predict future ones. This prevents "lookahead bias," where the model accidentally learns from data it wouldn't have in production.
 
 Here's how the splits break down:
 
@@ -159,7 +159,7 @@ Grade and grading company distributions stay fairly consistent across all three 
 
 > **Notebook**: [`03_preprocessing/notebook.ipynb`](03_preprocessing/notebook.ipynb)
 
-Raw fields like player names and brand strings can't be fed directly into a model. We built a preprocessing pipeline with **8 transformers** that convert the raw data into 13 numeric features plus a log-transformed price target.
+Raw fields like player names and brand strings can't be fed directly into a model. I built a preprocessing pipeline with **8 transformers** that convert the raw data into 13 numeric features plus a log-transformed price target.
 
 Here's what each transformer does, in plain language:
 
@@ -171,10 +171,10 @@ Here's what each transformer does, in plain language:
 | **BrandFeatures** | Same idea at the brand level — how popular and expensive is this brand? |
 | **GradeFeatures** | Converts grade to a number, flags whether it's PSA-graded, and flags "gem mint" (grade 10) |
 | **TimeFeatures** | Extracts the year/month of sale and how many days have passed since the first transaction in the dataset |
-| **TargetTransform** | Applies log(price + 1) to the sale price, taming the extreme skew we saw in EDA |
+| **TargetTransform** | Applies log(price + 1) to the sale price, taming the extreme skew I found in EDA |
 | **PrepareFeatures** | Selects the final 13 feature columns for modeling |
 
-**Important detail**: The "stateful" transformers (CardKey, Subject, Brand) are computed **only from training data**. When we process validation or test data, we look up those same training-derived statistics — we never peek at future information. The fitted pipeline is saved as a `.joblib` file so it can be reused consistently.
+**Important detail**: The "stateful" transformers (CardKey, Subject, Brand) are computed **only from training data**. When I process validation or test data, I look up those same training-derived statistics — I never peek at future information. The fitted pipeline is saved as a `.joblib` file so it can be reused consistently.
 
 ---
 
@@ -182,11 +182,11 @@ Here's what each transformer does, in plain language:
 
 > **Notebook**: [`04_price_estimator/notebook.ipynb`](04_price_estimator/notebook.ipynb)
 
-Before reaching for machine learning, we built a simple **lookup-based baseline** to see how far common sense gets us. The approach is a cascade — try the most specific method first, and fall back to broader estimates:
+Before reaching for machine learning, I built a simple **lookup-based baseline** to see how far common sense gets you. The approach is a cascade — try the most specific method first, and fall back to broader estimates:
 
 1. **Exact match** — Find the most recent prior sale of this exact card key. If it exists, use that price. This works for **78.6%** of test cards.
-2. **Subject + grade median** — For cards we haven't seen before, take the median price of all cards with the same player and grade. Covers **99.2%**.
-3. **Subject median** — If we still don't have a match, use the median price for that player across all grades. Covers **99.9%**.
+2. **Subject + grade median** — For cards I haven't seen before, take the median price of all cards with the same player and grade. Covers **99.2%**.
+3. **Subject median** — If there's still no match, use the median price for that player across all grades. Covers **99.9%**.
 4. **Global median** — Last resort: use the overall median price. Covers **100%**.
 
 ### How did it perform?
@@ -210,12 +210,13 @@ The takeaway: for cards with prior sales history, **simply looking up the last s
 
 > **Notebook**: [`05_model/notebook.ipynb`](05_model/notebook.ipynb)
 
-We trained an **XGBoost** gradient-boosted tree model on the 13 engineered features, predicting the log-transformed price.
+I trained an **XGBoost** gradient-boosted tree model on the 13 engineered features, predicting the log-transformed price.
 
 ### Model configuration
 
 | Parameter | Value | Why |
 |---|---|---|
+| Number of rounds | 1,000 (max) | Upper bound on boosting iterations; early stopping decides the actual count |
 | Learning rate | 0.05 | Slow learning for better generalization |
 | Max tree depth | 6 | Moderate complexity per tree |
 | Min child weight | 30 | Prevents trees from splitting on tiny groups |
@@ -241,7 +242,7 @@ The gap between training and validation/test error tells us the model memorized 
 
 > **Notebook**: [`06_model_eval/notebook.ipynb`](06_model_eval/notebook.ipynb)
 
-We evaluated the XGBoost model on the held-out test set and compared it to our non-ML baseline.
+I evaluated the XGBoost model on the held-out test set and compared it to my non-ML baseline.
 
 ### Overall test set performance
 
@@ -314,7 +315,7 @@ Two practical approaches:
 
 ### What features would you engineer with more time?
 
-- **Variety-level price stats** (paralleling the card/subject/brand statistics we already built)
+- **Variety-level price stats** (paralleling the card/subject/brand statistics I already built)
 - **Market momentum** — rolling median price over the last 30/60/90 days for a card or player, capturing trends
 - **Price velocity** — how fast a card's price is changing over time
 - **Seen/unseen indicator** — a binary flag so the model can learn distinct strategies for known vs. unknown cards
@@ -329,11 +330,11 @@ Two practical approaches:
 
 ### How did you prevent lookahead bias?
 
-We used a strict **out-of-time split**: training data ends in May 2021, validation covers June–October 2021, and the test set starts in November 2021. All stateful preprocessing (card/subject/brand statistics) is computed exclusively from training data. The fitted `PreprocessingModel` stores these transformers and applies transform-only to validation and test sets — no future information leaks backward. The price estimator baselines follow the same rule, only looking up prices from the training period.
+I used a strict **out-of-time split**: training data ends in May 2021, validation covers June–October 2021, and the test set starts in November 2021. All stateful preprocessing (card/subject/brand statistics) is computed exclusively from training data. The fitted `PreprocessingModel` stores these transformers and applies transform-only to validation and test sets — no future information leaks backward. The price estimator baselines follow the same rule, only looking up prices from the training period.
 
 ### How did you address overfitting?
 
-Multiple mechanisms were in place:
+I used multiple mechanisms:
 
 - **Early stopping** on validation RMSE (triggered at round 18)
 - **Regularization** — min_child_weight=30, gamma=0.1, L2 lambda=1.0, L1 alpha=0.1
