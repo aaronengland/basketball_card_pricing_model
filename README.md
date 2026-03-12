@@ -71,6 +71,8 @@ Trains an XGBoost regressor (`reg:squarederror`) on the log-transformed price ta
 
 **Parameters**: learning_rate=0.05, max_depth=6, min_child_weight=30, subsample=0.8, colsample_bytree=0.8, early_stopping_rounds=100.
 
+**Scope note**: For the sake of time and simplicity, this iteration does not include hyperparameter tuning (e.g., grid search, Bayesian optimization) or recursive feature elimination (RFE). Both are natural next steps for a production model. The card-level price features (median/mean) are retained despite contributing to rapid overfitting — they encode genuinely useful historical price signal for seen cards (the same signal the non-ML exact-match baseline relies on), and removing them would degrade seen-card predictions without meaningfully helping unseen cards.
+
 **Results**: The model early-stopped at 18 boosting rounds. Train/Valid/Test RMSE (log scale): 0.62 / 1.06 / 1.32. The rapid overfitting is likely driven by card-level price features that act as near-direct targets for seen cards but are 0 for unseen cards.
 
 ### 06_model_eval — Model Evaluation
