@@ -60,10 +60,16 @@ The fit `PreprocessingModel` is saved as a joblib artifact for reproducible infe
 
 Establishes a non-ML price estimation baseline using a cascade of lookup strategies. Uses the same train/test splits from 02_data_split for apples-to-apples comparison with the model.
 
-1. **Exact match**: most recent prior sale of the same card key
-2. **Subject + grade median**: fallback for unseen cards
-3. **Subject median**: second fallback
+1. **Exact match**: most recent prior sale of the same card key (78.6% coverage)
+2. **Subject + grade median**: fallback for unseen cards (99.2% coverage)
+3. **Subject median**: second fallback (99.9% coverage)
 4. **Global median**: final fallback
+
+| Method | N | MAE | Median AE | R² |
+|---|---|---|---|---|
+| Exact Match Only | 12,625 | $158.72 | $39.00 | 0.6375 |
+| Subject+Grade Median | 15,929 | $620.53 | $65.00 | -0.0001 |
+| Combined (all fallbacks) | 16,058 | $571.43 | $40.49 | 0.0007 |
 
 ### 05_model — XGBoost Training
 
@@ -86,8 +92,8 @@ Evaluates the XGBoost model on the test set across multiple dimensions:
 - Unseen (21.4%): Median AE $17.72, R² -0.0008
 
 **Key observations**:
-- The model and non-ML baselines use the same train/test split, enabling direct comparison
-- The model overfits quickly due to the card-level price features creating a distribution shift between seen and unseen cards
+- The combined non-ML baseline outperforms the XGBoost model on every metric — lower MAE ($571 vs $587), lower Median AE ($40 vs $58), and higher R² (0.0007 vs -0.0001). The exact-match baseline alone (R² 0.6375) is far stronger for seen cards, suggesting the simple lookup-based approach is hard to beat for fungible card pricing.
+- The model overfits quickly (18 rounds) due to the card-level price features creating a distribution shift between seen and unseen cards
 - Prediction range is compressed ($20-$3K) vs actual ($1-$4M) — extreme outliers are unrecoverable
 
 ## Infrastructure
@@ -96,11 +102,37 @@ Evaluates the XGBoost model on the test set across multiple dimensions:
 - **Compute**: SageMaker notebooks (Python 3.10+)
 - **Dependencies**: pandas, numpy, matplotlib, seaborn, xgboost, joblib
 
-## Potential Improvements
+## Discussion
 
-- Variety-level statistics as features
-- More granular time features (day of week, market momentum indicators)
-- External data (player performance, awards)
-- Ensemble approach: use exact match baseline when available, model otherwise
-- Quantile regression for confidence intervals
-- Address seen/unseen card distribution shift (separate models or indicator features)
+**How would you generate a confidence interval for your prediction?**
+
+Two approaches: (1) Use XGBoost's quantile regression (`reg:quantileerror`) to train separate models for the 10th and 90th percentiles, producing a prediction interval directly. (2) Leverage the card-level transaction history — for seen cards, compute empirical percentiles from the training price distribution for that card key. For unseen cards, fall back to the subject+grade distribution. The non-ML baseline has a natural advantage here since it's already built on group-level aggregations that extend readily to distributional estimates.
+
+**What are the shortcomings of your approach?**
+
+- The non-ML baseline outperforms the XGBoost model on every metric, indicating the model isn't adding value beyond simple lookups for this dataset
+- 21.4% of test cards are unseen in training — the model has no card-specific signal for these and relies entirely on subject/brand/grade features
+- Extreme prices (e.g., the $4M outlier) are unrecoverable — the log transform compresses the scale and the model's max prediction is ~$3K
+- No hyperparameter tuning or recursive feature elimination was performed
+- The temporal split means the model must generalize across market regimes (post-COVID boom/bust), which is inherently difficult
+
+**What features would you engineer if you had more time?**
+
+- Variety-level price statistics (paralleling the card/subject/brand stats)
+- Market momentum features — rolling median price over the last 30/60/90 days for a card or subject, to capture trends
+- Price velocity — rate of price change over time for a given card key
+- Seen/unseen indicator — a binary flag for whether the card appeared in training, so the model can learn different strategies for each
+- External data — player stats, All-Star/MVP selections, injury status, rookie year vs veteran
+- Day-of-week and seasonality features (holiday effects, NBA playoff timing)
+
+**Would your model improve with 10x the data? 100x?**
+
+10x would likely help — the main bottleneck is coverage. Only 78.6% of test cards are seen in training. More data means more cards have transaction history, improving both the model's card-level features and the exact-match baseline. It would also yield better estimates for subject/brand stats in the long tail. 100x would help further but with diminishing returns — at some point you'd saturate coverage for 2018 basketball cards and the remaining error would come from genuine price volatility (market shifts, condition subjectivity within a grade, auction dynamics) that no amount of historical data resolves. The fundamental challenge is that card prices are nonstationary — more data from 2018-2019 doesn't necessarily help predict 2022 prices.
+
+**How did/would you deal with lookahead bias?**
+
+We used an out-of-time split — train is strictly before June 2021, validation is June–October 2021, test is November 2021 onward. All stateful preprocessing (card/subject/brand stats) is fit only on training data. The `PreprocessingModel` stores the fit transformers and applies transform-only to validation and test, so no future information leaks backward. The price estimator baselines also only look up prices from the training period.
+
+**How did/would you deal with overfitting?**
+
+We used several mechanisms: early stopping on validation RMSE (triggered at 18 rounds), regularization parameters (min_child_weight=30, gamma=0.1, lambda=1.0, alpha=0.1), and subsampling (80% row and column sampling per tree). Despite this, the model overfits quickly because the card-level price features create a bimodal problem — for seen cards the answer is essentially given, for unseen cards there is no signal. With more time, next steps would include: RFE to find a more generalizable feature set, hyperparameter tuning to optimize the bias-variance tradeoff, and potentially separate models or an ensemble strategy for seen vs unseen cards.
