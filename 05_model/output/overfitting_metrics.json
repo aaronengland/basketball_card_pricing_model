@@ -1,0 +1,5 @@
+{
+  "train_rmse": 0.6223,
+  "valid_rmse": 1.062,
+  "test_rmse": 1.3182
+}

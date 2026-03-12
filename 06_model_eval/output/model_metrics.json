@@ -1,0 +1,23 @@
+{
+  "model_metrics": {
+    "MAE": 586.69,
+    "MAPE (%)": 192.47,
+    "RMSE": 33019.42,
+    "Median AE": 57.75,
+    "R2": -0.0001
+  },
+  "seen_card_metrics": {
+    "MAE": 177.92,
+    "MAPE (%)": 218.4,
+    "RMSE": 1254.56,
+    "Median AE": 61.64,
+    "R2": 0.1557
+  },
+  "unseen_card_metrics": {
+    "MAE": 2089.98,
+    "MAPE (%)": 97.1,
+    "RMSE": 71372.62,
+    "Median AE": 17.72,
+    "R2": -0.0008
+  }
+}
