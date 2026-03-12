@@ -1,4 +1,4 @@
-# Assessment Alt — Graded Sports Card Price Prediction
+# Basketball Card Pricing Model
 
 A machine learning pipeline for predicting the sale price of graded basketball cards using historical transaction data. The project is structured as a series of notebooks, each handling a discrete step in the pipeline.
 
