@@ -330,7 +330,7 @@ Two practical approaches:
 
 ### How did you prevent lookahead bias?
 
-I used a strict **out-of-time split**: training data ends in May 2021, validation covers June–October 2021, and the test set starts in November 2021. All stateful preprocessing (card/subject/brand statistics) is computed exclusively from training data. The fitted `PreprocessingModel` stores these transformers and applies transform-only to validation and test sets — no future information leaks backward. The price estimator baselines follow the same rule, only looking up prices from the training period.
+Lookahead bias happens when a model accidentally uses information from the future during training — for example, if price statistics included sales that hadn't happened yet at the time of prediction. To prevent this, I used a strict **out-of-time split**: training data ends in May 2021, validation covers June–October 2021, and the test set starts in November 2021. All stateful preprocessing (card/subject/brand statistics) is computed exclusively from training data. The fitted `PreprocessingModel` stores these transformers and applies transform-only to validation and test sets — no future information leaks backward. The price estimator baselines follow the same rule, only looking up prices from the training period.
 
 ### How did you address overfitting?
 
