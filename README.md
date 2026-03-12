@@ -23,26 +23,7 @@ Key findings:
 - Subject and brand have significant case inconsistencies (231 and 139 duplicates respectively)
 - Transaction volume spiked post-COVID (2020+)
 
-### 02_price_estimator — Non-ML Baseline
-
-Establishes a non-ML price estimation baseline using a cascade of lookup strategies:
-
-1. **Exact match**: most recent prior sale of the same card key (82.4% coverage)
-2. **Subject + grade median**: fallback for unseen cards (99.5% coverage)
-3. **Subject median**: second fallback (99.9% coverage)
-4. **Global median**: final fallback ($102.50)
-
-Results (on a standalone out-of-time test split, train < 2021-11-17):
-
-| Method | N | MAE | Median AE | R² |
-|---|---|---|---|---|
-| Exact Match Only | 10,969 | $102.19 | $16.47 | 0.7971 |
-| Subject+Grade Median | 13,251 | $687.68 | $54.70 | -0.0002 |
-| Combined (all fallbacks) | 13,317 | $590.69 | $19.97 | 0.0010 |
-
-Note: This notebook uses its own train/test split (no validation set, later cutoff) that differs from the model pipeline's split in 03_data_split.
-
-### 03_data_split — Train/Valid/Test Split
+### 02_data_split — Train/Valid/Test Split
 
 Splits data chronologically to prevent lookahead bias:
 
@@ -54,7 +35,7 @@ Splits data chronologically to prevent lookahead bias:
 
 Grade and grading company distributions are relatively stable across splits. Price distributions shift over time due to market trends.
 
-### 04_preprocessing — Feature Engineering
+### 03_preprocessing — Feature Engineering
 
 Builds a preprocessing pipeline with 8 transformers, each fit individually on training data then collected into a `PreprocessingModel` for consistent transform-only application to all splits.
 
@@ -75,6 +56,15 @@ Builds a preprocessing pipeline with 8 transformers, each fit individually on tr
 
 The fit `PreprocessingModel` is saved as a joblib artifact for reproducible inference.
 
+### 04_price_estimator — Non-ML Baseline
+
+Establishes a non-ML price estimation baseline using a cascade of lookup strategies. Uses the same train/test splits from 02_data_split for apples-to-apples comparison with the model.
+
+1. **Exact match**: most recent prior sale of the same card key
+2. **Subject + grade median**: fallback for unseen cards
+3. **Subject median**: second fallback
+4. **Global median**: final fallback
+
 ### 05_model — XGBoost Training
 
 Trains an XGBoost regressor (`reg:squarederror`) on the log-transformed price target with early stopping on validation RMSE.
@@ -94,13 +84,13 @@ Evaluates the XGBoost model on the test set across multiple dimensions:
 - Unseen (21.4%): Median AE $17.72, R² -0.0008
 
 **Key observations**:
-- Model performance is comparable to the combined non-ML baseline, though direct comparison is limited by different data splits
+- The model and non-ML baselines use the same train/test split, enabling direct comparison
 - The model overfits quickly due to the card-level price features creating a distribution shift between seen and unseen cards
-- Prediction range is compressed ($20–$3K) vs actual ($1–$4M) — extreme outliers are unrecoverable
+- Prediction range is compressed ($20-$3K) vs actual ($1-$4M) — extreme outliers are unrecoverable
 
 ## Infrastructure
 
-- **Storage**: S3 bucket `assessment-alt` with prefixed paths per task (e.g., `03_data_split/train.csv`)
+- **Storage**: S3 bucket `assessment-alt` with prefixed paths per task (e.g., `02_data_split/train.csv`)
 - **Compute**: SageMaker notebooks (Python 3.10+)
 - **Dependencies**: pandas, numpy, matplotlib, seaborn, xgboost, joblib
 
@@ -112,4 +102,3 @@ Evaluates the XGBoost model on the test set across multiple dimensions:
 - Ensemble approach: use exact match baseline when available, model otherwise
 - Quantile regression for confidence intervals
 - Address seen/unseen card distribution shift (separate models or indicator features)
-- Rerun baselines on the same train/valid/test split for apples-to-apples comparison
