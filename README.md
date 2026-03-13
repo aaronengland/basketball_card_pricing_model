@@ -1,4 +1,4 @@
-# Predicting Sale Prices of Graded Basketball Cards Using Machine Learning
+# Basketball Card Pricing Model
 
 ## Abstract
 
