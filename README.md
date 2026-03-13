@@ -1,8 +1,8 @@
-# Basketball Card Pricing Model
+# Predicting Sale Prices of Graded Basketball Cards Using Machine Learning
 
-> **Goal**: Predict how much a graded basketball card will sell for, using historical sales data.
+## Abstract
 
-This project builds a machine learning pipeline to estimate the sale price of 2018 graded basketball cards. I walk through every step — from exploring the raw data, to engineering features, to training a model — and compare my ML approach against a simple "lookup the last sale" baseline.
+This study develops and evaluates a machine learning pipeline for estimating the sale price of graded 2018 basketball cards using 100,000 historical transaction records. We compare an XGBoost gradient-boosted tree model against a non-ML lookup-based baseline that cascades from exact card match to increasingly broad fallback strategies. Our findings indicate that the simple lookup baseline outperforms the XGBoost model across all evaluation metrics, achieving a median absolute error of $40.49 compared to $57.75 for the ML model. These results suggest that for fungible collectibles with sufficient transaction history, historical price lookup remains a highly competitive strategy that is difficult to surpass with standard supervised learning approaches.
 
 > **Terminology note**: Throughout this document, **"txn"** is shorthand for **"transaction"** — a single recorded sale of a card at a specific price and date.
 
@@ -10,334 +10,375 @@ This project builds a machine learning pipeline to estimate the sale price of 20
 
 ## Table of Contents
 
-- [The Dataset](#the-dataset)
-- [Step 1 — Exploratory Data Analysis](#step-1--exploratory-data-analysis)
-- [Step 2 — Splitting the Data](#step-2--splitting-the-data)
-- [Step 3 — Feature Engineering](#step-3--feature-engineering)
-- [Step 4 — Non-ML Baseline](#step-4--non-ml-baseline)
-- [Step 5 — XGBoost Model Training](#step-5--xgboost-model-training)
-- [Step 6 — Model Evaluation](#step-6--model-evaluation)
-- [Infrastructure](#infrastructure)
-- [Discussion & Reflections](#discussion--reflections)
+- [1. Data Description](#1-data-description)
+- [2. Exploratory Data Analysis](#2-exploratory-data-analysis)
+- [3. Data Splitting Strategy](#3-data-splitting-strategy)
+- [4. Feature Engineering](#4-feature-engineering)
+- [5. Non-ML Baseline](#5-non-ml-baseline)
+- [6. XGBoost Model Training](#6-xgboost-model-training)
+- [7. Model Evaluation](#7-model-evaluation)
+- [8. Infrastructure](#8-infrastructure)
+- [9. Discussion](#9-discussion)
 
 ---
 
-## The Dataset
+## 1. Data Description
 
 The dataset contains **100,000 sales records** of graded basketball cards from 2018, spanning **May 2018 through February 2022**.
 
-Each record captures:
+Each record captures the following fields:
 
-| Field | What It Represents |
+| Field | Description |
 |---|---|
 | `year` | The year the card was produced (always 2018) |
 | `subject` | The player on the card (e.g., LeBron James) |
 | `brand` | The card manufacturer (e.g., Panini Prizm) |
 | `variety` | The specific variant (e.g., "Silver", or null for base cards) |
 | `card_number` | The number printed on the card |
-| `date` | When the sale happened |
-| `price` | What it sold for (the prediction target) |
+| `date` | The date of the sale |
+| `price` | The sale price in USD (the prediction target) |
 | `grade` | The condition rating (1–10 scale) |
-| `grading_company` | Who graded it (PSA, BGS, SGC, etc.) |
+| `grading_company` | The grading authority (PSA, BGS, SGC, etc.) |
 
-**What makes two cards "the same"?** Cards are considered identical (fungible) when they share the same year, subject, brand, variety, card number, grade, and grading company. This combination is called the **card key** — think of it as a unique fingerprint for a specific card type.
+Cards are considered fungible when they share the same year, subject, brand, variety, card number, grade, and grading company. This combination is referred to as the **card key** throughout this analysis.
 
-**Source**: Stored in S3 at `s3://assessment-alt/00_data_collection/transaction_data.csv`
+**Source**: `s3://assessment-alt/00_data_collection/transaction_data.csv`
 
 ---
 
-## Step 1 — Exploratory Data Analysis
+## 2. Exploratory Data Analysis
 
 > **Notebook**: [`01_eda/notebook.ipynb`](01_eda/notebook.ipynb)
 
-Before building anything, I took a close look at the data to understand what I was working with. Here's what stood out:
-
-### Prices are wildly skewed
-
-Most cards sell for under $100, but a few sell for hundreds of thousands — even millions. The typical (median) sale is **$95**, the average is **$460**, and the highest sale in the dataset is **$4 million**. Because of this extreme skew, I apply a **log transformation** to prices before modeling — this brings the distribution closer to normal and prevents outliers from dominating the model.
+### 2.1 Target Variable Distribution
 
 <p align="center">
   <img src="01_eda/output/target_distribution.png" alt="Price distribution before and after log transform" width="700"/>
 </p>
 
-### Grade 10 cards dominate the market
+**Figure 2.1.** Distribution of sale prices before (left) and after (right) log transformation. The raw price distribution is heavily right-skewed, with the majority of transactions concentrated below $100 while a small number of sales exceed $100,000. The median sale price is $95, the mean is $460, and the maximum observed price is $4 million. After applying a log(price + 1) transformation, the distribution approximates a normal shape, making it more suitable for regression modeling. This transformation is applied to the target variable throughout the modeling pipeline.
 
-Over half (51%) of all transactions involve **Grade 10** (gem mint) cards, and another 36% are **Grade 9**. Lower grades are relatively rare in this dataset, meaning the market is heavily concentrated around top-condition cards.
+### 2.2 Grade Distribution
 
 <p align="center">
   <img src="01_eda/output/grade_distribution.png" alt="Grade distribution" width="700"/>
 </p>
 
-### PSA is the go-to grading company
+**Figure 2.2.** Frequency of transactions by card grade. Grade 10 (gem mint) accounts for approximately 51% of all transactions, and Grade 9 accounts for another 36%. Grades below 8 are exceedingly rare in the dataset, collectively representing less than 1% of sales. This concentration indicates that the secondary market for graded basketball cards is dominated by high-condition specimens, and model performance on lower grades should be interpreted with caution given the limited sample sizes.
 
-**87% of cards** were graded by PSA (Professional Sports Authenticator), making it the overwhelming standard. BGS, SGC, and others make up the remaining 13%.
+### 2.3 Grading Company Distribution
 
 <p align="center">
   <img src="01_eda/output/grading_company_distribution.png" alt="Grading company distribution" width="700"/>
 </p>
 
-### Prices vary significantly by grade and grader
+**Figure 2.3.** Proportion of transactions by grading company. PSA (Professional Sports Authenticator) accounts for 87% of all graded card sales, with BGS (Beckett Grading Services) representing nearly all of the remainder at 13%. SGC and other grading companies appear only in trace quantities. This imbalance reflects PSA's dominant market position in sports card authentication during this period.
 
-Higher grades command higher prices, as expected — but the grading company also matters. PSA cards tend to carry a premium.
+### 2.4 Price Distribution by Grade
 
 <p align="center">
   <img src="01_eda/output/price_by_grade.png" alt="Price by grade" width="700"/>
 </p>
 
+**Figure 2.4.** Box plots of sale price by grade, displayed on a logarithmic scale (outliers excluded). A clear positive relationship between grade and price is observed: higher-graded cards command substantially higher prices. Grade 10 cards exhibit the widest interquartile range, reflecting the diversity of players and brands within that grade tier. Notably, even within a single grade, prices span multiple orders of magnitude, indicating that grade alone is insufficient to predict price — card identity (player, brand, variety) plays a critical role.
+
+### 2.5 Price Distribution by Grading Company
+
 <p align="center">
   <img src="01_eda/output/price_by_grading_company.png" alt="Price by grading company" width="700"/>
 </p>
 
-### Transaction volume exploded after COVID
+**Figure 2.5.** Box plots of sale price by grading company on a logarithmic scale. PSA-graded cards exhibit a higher median price and wider price range compared to BGS-graded cards. This premium may reflect both collector preference for PSA holders and compositional differences in the types of cards submitted to each grading service. SGC-graded cards appear in too few transactions to draw reliable conclusions.
 
-Card sales surged dramatically starting in 2020, likely driven by the COVID-era collectibles boom. This matters for modeling because it means the market environment changed significantly over the dataset's timeframe.
+### 2.6 Transaction Volume Over Time
 
 <p align="center">
   <img src="01_eda/output/transactions_over_time.png" alt="Transaction volume over time" width="700"/>
 </p>
 
-### Top players and brands
+**Figure 2.6.** Monthly transaction volume from May 2018 to February 2022, with the dashed red line marking the onset of the COVID-19 pandemic in March 2020. Transaction volume remained relatively low and stable through 2019, then surged dramatically beginning in mid-2020, peaking in early 2021 before declining through the end of the observation period. This pattern is consistent with the widely documented COVID-era collectibles boom, during which stimulus payments, increased leisure time, and heightened media attention drove a significant influx of buyers into the sports card market. This temporal nonstationarity poses a challenge for modeling, as the market environment changed substantially within the dataset's timeframe.
 
-A handful of players and brands dominate transaction volume. This concentration means the model will have much more data for popular cards than for niche ones.
+### 2.7 Top Subjects by Transaction Count
 
 <p align="center">
   <img src="01_eda/output/top_subjects.png" alt="Top subjects (players) by transaction count" width="700"/>
 </p>
 
+**Figure 2.7.** The 20 most frequently transacted players (subjects) in the dataset. Luka Doncic leads with approximately 14,000 transactions, followed by Trae Young and Deandre Ayton — all members of the 2018 NBA draft class. The distribution exhibits a long tail: the top 5 players account for a disproportionate share of total volume, while hundreds of other players appear infrequently. This concentration means the model will have substantially more training signal for popular rookies than for veteran or niche players.
+
+### 2.8 Top Brands by Transaction Count
+
 <p align="center">
   <img src="01_eda/output/top_brands.png" alt="Top brands by transaction count" width="700"/>
 </p>
 
-### Price trends over time for top players
+**Figure 2.8.** The 20 most frequently transacted card brands. Panini Prizm dominates with roughly 15,000 transactions, followed by Panini Donruss Optic and Panini Select. Panini's product lines collectively account for the vast majority of transactions, consistent with the company's exclusive licensing agreement with the NBA during this period. Lower-volume brands appear in the long tail, where sparse data may limit model accuracy.
 
-Some players' card values moved dramatically over the dataset's timeframe, reflecting real-world events, hype cycles, and market dynamics.
+### 2.9 Median Price Over Time for Top Players
 
 <p align="center">
   <img src="01_eda/output/price_over_time_top_subjects.png" alt="Price trends over time for top subjects" width="700"/>
 </p>
 
-### Data quality issues
+**Figure 2.9.** Monthly median sale prices for the five most frequently transacted players, plotted on a logarithmic scale. All five players exhibit a common pattern: prices rose sharply during the 2020–2021 boom period and declined thereafter. Luka Doncic's cards consistently command the highest median prices, peaking above $1,000, while the remaining players cluster at lower price points. The synchronized rise and fall across players suggests that macro-market forces (speculation, pandemic-driven demand) drove price movements more than individual player performance during this period.
 
-- **~45% of the `variety` field is null** — these are base cards with no special variant. I fill these with "base" during preprocessing.
-- **Case inconsistencies**: The `subject` and `brand` fields have duplicates caused by inconsistent capitalization (e.g., "LeBron James" vs "LEBRON JAMES") — 231 duplicate subjects and 139 duplicate brands. I normalize these during preprocessing.
+### 2.10 Missing Values
 
 <p align="center">
   <img src="01_eda/output/propna.png" alt="Missing value proportions" width="700"/>
 </p>
 
+**Figure 2.10.** Proportion of missing values by column. The `variety` field is the only column with substantial missingness, at approximately 45%. All other fields are complete. The missing variety values correspond to base cards (i.e., cards with no special variant), and are filled with the string "base" during preprocessing.
+
+### 2.11 Variety Analysis
+
 <p align="center">
   <img src="01_eda/output/variety_analysis.png" alt="Variety analysis" width="700"/>
 </p>
 
+**Figure 2.11.** Left: count of transactions with null versus non-null variety fields. Right: the 20 most common named varieties. Approximately 45% of all transactions are base cards (null variety), while the remaining 55% include named variants such as "Silver Prizm," "Rated Rookie," and various color parallels. Named varieties are important price differentiators — rare parallels (e.g., Gold, Black) can command significant premiums over their base counterparts.
+
+### 2.12 Data Quality Issues
+
+Text normalization analysis revealed **231 duplicate subjects** and **139 duplicate brands** caused by inconsistent capitalization (e.g., "LeBron James" vs. "LEBRON JAMES"). These are resolved by lowercasing and stripping whitespace during preprocessing to ensure accurate card key construction.
+
 ---
 
-## Step 2 — Splitting the Data
+## 3. Data Splitting Strategy
 
 > **Notebook**: [`02_data_split/notebook.ipynb`](02_data_split/notebook.ipynb)
 
-I split the data **by date** (not randomly) to simulate real-world conditions — the model only sees past sales and must predict future ones. This prevents "lookahead bias," where the model accidentally learns from data it wouldn't have in production.
+The data was split **chronologically** (not randomly) to simulate real-world deployment conditions, where the model must predict future sale prices using only historical information. This prevents lookahead bias — the inadvertent use of future information during training.
 
-Here's how the splits break down:
-
-- **Training set (62%)** — May 2018 through May 2021 — 62,407 transactions. This is what the model learns from.
-- **Validation set (22%)** — June through October 2021 — 21,535 transactions. Used to tune the model and decide when to stop training.
-- **Test set (16%)** — November 2021 through February 2022 — 16,058 transactions. The final, untouched evaluation set.
-
-Grade and grading company distributions stay fairly consistent across all three splits. However, prices shift over time due to evolving market conditions — which is exactly the challenge a real-world model would face.
+| Split | Date Range | Transactions | Percentage |
+|---|---|---|---|
+| Training | May 2018 – May 2021 | 62,407 | 62% |
+| Validation | June – October 2021 | 21,535 | 22% |
+| Test | November 2021 – February 2022 | 16,058 | 16% |
 
 <p align="center">
   <img src="02_data_split/output/split_distribution.png" alt="Split distribution" width="700"/>
 </p>
 
+**Figure 3.1.** Monthly transaction volume colored by data split, with dashed vertical lines indicating the validation and test set boundaries. The training set captures the full pre-boom and boom periods through May 2021. The validation and test sets cover the post-peak market decline, requiring the model to generalize to a market environment it has not directly observed during training. Grade and grading company distributions remain relatively stable across splits, but median prices shift downward in the later periods due to the cooling market.
+
 <p align="center">
   <img src="02_data_split/output/date_distribution.png" alt="Date distribution across splits" width="700"/>
 </p>
 
+**Figure 3.2.** Overall transaction volume over time, confirming the temporal structure of the dataset. The sharp increase and subsequent decline in transaction volume are clearly visible, providing context for the challenge of temporal generalization inherent in the out-of-time split.
+
 ---
 
-## Step 3 — Feature Engineering
+## 4. Feature Engineering
 
 > **Notebook**: [`03_preprocessing/notebook.ipynb`](03_preprocessing/notebook.ipynb)
 
-Raw fields like player names and brand strings can't be fed directly into a model. I built a preprocessing pipeline with **8 transformers** that convert the raw data into 13 numeric features plus a log-transformed price target.
+Raw fields such as player names and brand strings cannot be fed directly into a tree-based model. A preprocessing pipeline consisting of **8 transformers** converts the raw data into 13 numeric features and a log-transformed price target.
 
-Here's what each transformer does, in plain language:
-
-| Transformer | What It Does |
+| Transformer | Description |
 |---|---|
-| **TextNormalizer** | Cleans up text — lowercases everything, strips whitespace, fills missing variety with "base" |
-| **CardKeyFeatures** | For each unique card, calculates how many times it sold in training and its median/mean price. These give the model a sense of "what has this exact card been going for?" |
-| **SubjectFeatures** | Same idea but at the player level — how often does this player's cards sell, and at what median price? |
-| **BrandFeatures** | Same idea at the brand level — how popular and expensive is this brand? |
-| **GradeFeatures** | Converts grade to a number, flags whether it's PSA-graded, and flags "gem mint" (grade 10) |
-| **TimeFeatures** | Extracts the year/month of sale and how many days have passed since the first transaction in the dataset |
-| **TargetTransform** | Applies log(price + 1) to the sale price, taming the extreme skew I found in EDA |
+| **TextNormalizer** | Lowercases text, strips whitespace, fills missing variety with "base" |
+| **CardKeyFeatures** | Computes transaction count and median/mean price per unique card key from training data |
+| **SubjectFeatures** | Computes transaction count and median price per player from training data |
+| **BrandFeatures** | Computes transaction count and median price per brand from training data |
+| **GradeFeatures** | Encodes grade numerically, flags PSA grading, flags gem mint (grade 10) |
+| **TimeFeatures** | Extracts sale year, month, and days since the first transaction in the dataset |
+| **TargetTransform** | Applies log(price + 1) to the target variable |
 | **PrepareFeatures** | Selects the final 13 feature columns for modeling |
 
-**Important detail**: The "stateful" transformers (CardKey, Subject, Brand) are computed **only from training data**. When I process validation or test data, I look up those same training-derived statistics — I never peek at future information. The fitted pipeline is saved as a `.joblib` file so it can be reused consistently.
+All stateful transformers (CardKey, Subject, Brand) are fit exclusively on training data. Validation and test sets receive transform-only operations using the training-derived statistics, preventing information leakage. The fitted pipeline is persisted as a `.joblib` file for consistent reuse.
 
 ---
 
-## Step 4 — Non-ML Baseline
+## 5. Non-ML Baseline
 
 > **Notebook**: [`04_price_estimator/notebook.ipynb`](04_price_estimator/notebook.ipynb)
 
-Before reaching for machine learning, I built a simple **lookup-based baseline** to see how far common sense gets you. The approach is a cascade — try the most specific method first, and fall back to broader estimates:
+Before applying machine learning, a lookup-based baseline was constructed to establish a performance floor. The approach uses a priority cascade:
 
-1. **Exact match** — Find the most recent prior sale of this exact card key. If it exists, use that price. This works for **78.6%** of test cards.
-2. **Subject + grade median** — For cards I haven't seen before, take the median price of all cards with the same player and grade. Covers **99.2%**.
-3. **Subject median** — If there's still no match, use the median price for that player across all grades. Covers **99.9%**.
-4. **Global median** — Last resort: use the overall median price. Covers **100%**.
-
-### How did it perform?
-
-- **Exact match alone** was remarkably strong: it achieved an R-squared of **0.64** and a median error of just **$39** — but only covers 78.6% of cards.
-- **The combined cascade** (using all fallbacks) covers every card but is weaker overall: median error of **$40.49** and R-squared near zero. The fallback methods dilute the accuracy of the exact-match approach.
-
-The takeaway: for cards with prior sales history, **simply looking up the last sale price is hard to beat**.
-
-<p align="center">
-  <img src="04_price_estimator/output/actual_vs_predicted.png" alt="Baseline actual vs predicted" width="700"/>
-</p>
+1. **Exact match** — Use the most recent prior sale of the same card key (covers 78.6% of test cards)
+2. **Subject + grade median** — Median price of all training sales with the same player and grade (covers 99.2%)
+3. **Subject median** — Median price for the player across all grades (covers 99.8%)
+4. **Global median** — Overall median price from training (covers 100%)
 
 <p align="center">
   <img src="04_price_estimator/output/coverage.png" alt="Baseline coverage by method" width="700"/>
 </p>
 
+**Figure 5.1.** Distribution of prediction methods used by the cascade baseline on the test set. The exact match method covers the majority of test cards (78.6%), with subject+grade median serving as the primary fallback for previously unseen cards (20.6%). Subject-only median and global median fallbacks are rarely invoked (0.6% and 0.2%, respectively), indicating that the combination of player and grade provides sufficient coverage for nearly all test observations.
+
+<p align="center">
+  <img src="04_price_estimator/output/actual_vs_predicted.png" alt="Baseline actual vs predicted" width="700"/>
+</p>
+
+**Figure 5.2.** Left: actual versus predicted prices for the combined baseline on a log-log scale, with the red dashed line indicating perfect prediction. Points cluster near the diagonal for mid-range prices ($10–$1,000), indicating reasonable accuracy in this range. However, the baseline systematically underpredicts high-value cards and compresses its predictions relative to the true price range. Right: distribution of prediction errors clipped to +/- $1,000, showing a roughly symmetric distribution centered near zero with a slight positive skew (the model tends to underpredict more than it overpredicts).
+
+| Method | N | MAE | Median AE | R-squared |
+|---|---|---|---|---|
+| Exact Match Only | 12,625 | $158.72 | $39.00 | 0.64 |
+| Combined (all fallbacks) | 16,058 | $571.43 | $40.49 | 0.0007 |
+
+The exact match method alone achieves strong performance (R-squared = 0.64, median error = $39) but is limited to cards with prior sales history. The combined cascade covers all test cards but produces a near-zero R-squared, as the broader fallback methods dilute the accuracy of exact match predictions.
+
 ---
 
-## Step 5 — XGBoost Model Training
+## 6. XGBoost Model Training
 
 > **Notebook**: [`05_model/notebook.ipynb`](05_model/notebook.ipynb)
 
-I trained an **XGBoost** gradient-boosted tree model on the 13 engineered features, predicting the log-transformed price.
+An XGBoost gradient-boosted tree model was trained on the 13 engineered features, predicting the log-transformed price.
 
-### Model configuration
+### Model Configuration
 
-| Parameter | Value | Why |
+| Parameter | Value | Rationale |
 |---|---|---|
-| Number of rounds | 1,000 (max) | Upper bound on boosting iterations; early stopping decides the actual count |
-| Learning rate | 0.05 | Slow learning for better generalization |
-| Max tree depth | 6 | Moderate complexity per tree |
-| Min child weight | 30 | Prevents trees from splitting on tiny groups |
-| Subsample | 80% | Each tree sees a random 80% of rows (reduces overfitting) |
-| Column sample | 80% | Each tree sees a random 80% of features |
-| Early stopping | 100 rounds | Stop if validation error hasn't improved in 100 rounds |
+| Max boosting rounds | 1,000 | Upper bound; early stopping determines the actual count |
+| Learning rate | 0.05 | Conservative rate for improved generalization |
+| Max tree depth | 6 | Moderate per-tree complexity |
+| Min child weight | 30 | Prevents splits on small subgroups |
+| Subsample | 80% | Row-level randomization to reduce overfitting |
+| Column sample | 80% | Feature-level randomization to reduce overfitting |
+| Early stopping patience | 100 rounds | Stops training when validation error plateaus |
 
-### What happened
+### Training Outcome
 
-The model **stopped early at just 18 boosting rounds** — a sign of rapid overfitting. Here's the error progression (RMSE on the log-price scale):
+The model triggered early stopping at **round 18 of 1,000**, indicating rapid overfitting. RMSE on the log-price scale:
 
 - **Training**: 0.62
 - **Validation**: 1.06
 - **Test**: 1.32
 
-The gap between training and validation/test error tells us the model memorized the training data rather than learning generalizable patterns. The likely culprit: **card-level price features** (median/mean price from training) act as near-direct answers for cards the model has seen before, but are zero for unseen cards — creating a split personality problem.
+The substantial gap between training and validation/test error confirms that the model memorized training patterns rather than learning generalizable relationships. The likely cause is the card-level price features (median/mean from training), which act as near-direct answers for previously seen cards but are zero-valued for unseen cards — creating a bimodal prediction problem.
 
-> **Scope note**: This iteration skipped hyperparameter tuning and feature selection (RFE) for time reasons. Both are natural next steps.
+> **Note**: Hyperparameter tuning and feature selection (e.g., RFE) were not performed in this iteration due to time constraints. Both represent natural next steps.
 
 ---
 
-## Step 6 — Model Evaluation
+## 7. Model Evaluation
 
 > **Notebook**: [`06_model_eval/notebook.ipynb`](06_model_eval/notebook.ipynb)
 
-I evaluated the XGBoost model on the held-out test set and compared it to my non-ML baseline.
+### 7.1 Overall Test Set Performance
 
-### Overall test set performance
+| Metric | Value |
+|---|---|
+| Mean Absolute Error (MAE) | $586.69 |
+| Median Absolute Error | $57.75 |
+| MAPE | 192.47% |
+| R-squared | -0.0001 |
 
-- **Mean Absolute Error (MAE)**: $586.69 — on average, predictions are off by ~$587
-- **Median Absolute Error**: $57.75 — half of predictions are within ~$58 (the median is more representative given the skewed prices)
-- **MAPE**: 192.47% — percentage error is high because small-dollar cards with even modest dollar errors produce huge percentage errors
-- **R-squared**: -0.0001 — the model explains essentially none of the variance (roughly equivalent to predicting the mean for everything)
+The negative R-squared indicates that the model does not explain variance in sale prices beyond what a constant mean prediction would achieve.
 
-### Seen vs. unseen cards
-
-The model behaves very differently depending on whether it has seen a card before:
-
-- **Seen cards (78.6% of test set)**: Median error of $61.64, R-squared of 0.16 — decent but not great
-- **Unseen cards (21.4%)**: Median error of $17.72, R-squared of -0.0008 — low error in dollars (these tend to be cheaper cards), but no predictive power
-
-### The honest takeaway
-
-**The simple lookup baseline beats the ML model on every metric.** The baseline achieved lower MAE ($571 vs $587), lower median error ($40 vs $58), and marginally higher R-squared. For fungible items with transaction history, "just look up the last sale" turns out to be a very strong strategy that's difficult for a model to surpass.
-
-The model also compresses its prediction range to roughly $20–$3,000, while actual prices span $1 to $4 million. Extreme outliers are simply unrecoverable.
+### 7.2 Actual vs. Predicted
 
 <p align="center">
   <img src="06_model_eval/output/actual_vs_predicted.png" alt="Model actual vs predicted" width="700"/>
 </p>
 
+**Figure 7.1.** Actual versus predicted prices on a log-log scale. The model compresses its prediction range to approximately $20–$3,000, while actual prices span from under $1 to over $4 million. For cards in the $50–$500 range, predictions cluster loosely around the diagonal, but the model systematically underpredicts high-value cards and overpredicts low-value cards. The narrow prediction band reflects the model's inability to capture the full range of price variation in the data.
+
+### 7.3 Residual Analysis
+
 <p align="center">
   <img src="06_model_eval/output/residual_analysis.png" alt="Residual analysis" width="700"/>
 </p>
+
+**Figure 7.2.** Left: distribution of residuals (actual minus predicted) clipped to +/- $1,000. The distribution is approximately centered at zero but exhibits heavy positive tails, indicating that large underpredictions (actual >> predicted) are more common than large overpredictions. Right: residuals plotted against predicted values on a log scale. The fan-shaped pattern — with residual variance increasing at higher predicted values — suggests heteroscedasticity, which is expected given the multiplicative nature of price variation in this market.
+
+### 7.4 Error by Grade
 
 <p align="center">
   <img src="06_model_eval/output/error_by_grade.png" alt="Error breakdown by grade" width="700"/>
 </p>
 
+**Figure 7.3.** Mean Absolute Percentage Error (MAPE) by card grade. Lower grades (6.0, 7.0) exhibit extremely high MAPE, driven by small sample sizes and the tendency for low absolute-dollar errors to produce large percentage errors on inexpensive cards. Grade 9 and 10 cards — which constitute the vast majority of transactions — show more moderate MAPE values, though still exceeding 100% in most cases.
+
+### 7.5 Error by Price Range
+
 <p align="center">
   <img src="06_model_eval/output/error_by_price_range.png" alt="Error breakdown by price range" width="700"/>
 </p>
+
+**Figure 7.4.** MAPE by actual price range. Cards in the $0–$50 range exhibit the highest MAPE (exceeding 250%), because even modest absolute-dollar prediction errors produce large percentage errors on low-priced items. As actual prices increase, MAPE generally decreases, with the $500–$1K and $1K+ ranges showing the lowest MAPE. However, these higher-value bins also have larger absolute errors, reflecting the difficulty of predicting prices for rare, high-value cards.
+
+### 7.6 Feature Importance
 
 <p align="center">
   <img src="06_model_eval/output/feature_importance.png" alt="Feature importance" width="700"/>
 </p>
 
+**Figure 7.5.** Feature importance ranked by gain (the average reduction in loss contributed by each feature across all splits). Card-level median price is the dominant feature by a wide margin, confirming the model's heavy reliance on historical card-specific pricing. Subject-level median price and card transaction count also rank highly. Time-based and grade-based features contribute comparatively little, suggesting the model primarily functions as a lookup of historical price statistics rather than learning generalizable pricing patterns from card attributes.
+
+### 7.7 Seen vs. Unseen Cards
+
+The model exhibits sharply different behavior depending on whether a card has appeared in training:
+
+| Segment | N | % of Test | Median AE | R-squared |
+|---|---|---|---|---|
+| Seen cards | 12,625 | 78.6% | $61.64 | 0.16 |
+| Unseen cards | 3,433 | 21.4% | $17.72 | -0.0008 |
+
+For seen cards, the model achieves modest predictive power (R-squared = 0.16) by leveraging historical price statistics. For unseen cards, predictive power is essentially zero. The lower median absolute error for unseen cards ($17.72 vs. $61.64) is an artifact of these cards tending to be lower-priced, not an indication of better model performance.
+
+### 7.8 Model vs. Baseline Comparison
+
+| Metric | XGBoost Model | Lookup Baseline |
+|---|---|---|
+| MAE | $586.69 | $571.43 |
+| Median AE | $57.75 | $40.49 |
+| R-squared | -0.0001 | 0.0007 |
+
+**The non-ML lookup baseline outperforms the XGBoost model on every metric.** For fungible items with transaction histories, simply looking up the most recent sale price proves to be a highly competitive strategy that the current ML approach fails to surpass.
+
 ---
 
-## Infrastructure
+## 8. Infrastructure
 
 | Component | Details |
 |---|---|
-| **Storage** | S3 bucket `assessment-alt`, organized by pipeline step (e.g., `02_data_split/train.csv`) |
+| **Storage** | S3 bucket `assessment-alt`, organized by pipeline step |
 | **Compute** | AWS SageMaker notebooks, Python 3.10+ |
 | **Key libraries** | pandas, numpy, matplotlib, seaborn, xgboost, joblib |
 
 ---
 
-## Discussion & Reflections
+## 9. Discussion
 
-### How would you generate a confidence interval for your prediction?
+### 9.1 Generating Confidence Intervals
 
-Two practical approaches:
+Two approaches are recommended for producing prediction intervals:
 
-1. **Quantile regression** — Train XGBoost with `reg:quantileerror` to predict the 10th and 90th percentiles separately, giving you a prediction interval directly from the model.
-2. **Empirical distribution** — For seen cards, compute percentile ranges from that card's historical sales. For unseen cards, fall back to the player+grade distribution. The non-ML baseline lends itself naturally to this since it's already built on group-level aggregations.
+1. **Quantile regression** — Train XGBoost with `reg:quantileerror` to directly predict the 10th and 90th percentiles, yielding a model-native prediction interval.
+2. **Empirical distribution** — For seen cards, compute percentile ranges from historical sales of that card key. For unseen cards, fall back to the player+grade distribution. This approach integrates naturally with the non-ML baseline's group-level aggregation structure.
 
-### What are the shortcomings of your approach?
+### 9.2 Limitations
 
-- The non-ML baseline **outperforms the XGBoost model on every metric**, meaning the model isn't adding value beyond simple lookups for this particular dataset.
-- **21.4% of test cards are completely new** — the model has no card-specific pricing signal for these and must rely solely on player/brand/grade features.
-- **Extreme prices are unrecoverable** — the log transform and model architecture cap predictions around $3K, while real sales reach $4M.
-- **No hyperparameter tuning or feature selection** was performed due to time constraints.
-- The **temporal split forces the model to generalize across different market regimes** (pre-COVID calm vs. post-COVID boom), which is inherently difficult.
+- The non-ML baseline outperforms the XGBoost model on every evaluation metric, indicating the model does not add value beyond simple lookups for this dataset.
+- 21.4% of test cards have no prior transaction history, leaving the model without card-specific pricing signal for these observations.
+- The log transformation and model architecture effectively cap predictions around $3,000, while actual prices reach $4 million. Extreme values are unrecoverable.
+- No hyperparameter tuning or feature selection was performed.
+- The temporal split requires the model to generalize across fundamentally different market regimes (pre- and post-COVID), which is inherently difficult.
 
-### What features would you engineer with more time?
+### 9.3 Proposed Additional Features
 
-- **Variety-level price stats** (paralleling the card/subject/brand statistics I already built)
-- **Market momentum** — rolling median price over the last 30/60/90 days for a card or player, capturing trends
-- **Price velocity** — how fast a card's price is changing over time
-- **Seen/unseen indicator** — a binary flag so the model can learn distinct strategies for known vs. unknown cards
-- **External data** — player stats, All-Star/MVP selections, injury status, rookie vs. veteran status
-- **Seasonality features** — day of week, holidays, NBA playoff timing
+- **Variety-level price statistics** (paralleling the existing card/subject/brand aggregations)
+- **Market momentum** — rolling median price over 30/60/90-day windows for a card or player
+- **Price velocity** — the rate of change of a card's price over time
+- **Seen/unseen indicator** — a binary flag enabling the model to learn distinct strategies for known versus unknown cards
+- **External data** — player statistics, All-Star/MVP selections, injury status, rookie vs. veteran classification
+- **Seasonality features** — day of week, holiday indicators, NBA playoff timing
 
-### Would more data help? (10x? 100x?)
+### 9.4 Would More Data Help?
 
-**10x would likely help significantly.** The biggest bottleneck is coverage — only 78.6% of test cards appear in training. More data means more cards have sales history, improving both the model's card-level features and the exact-match baseline. It would also produce better estimates for niche players and brands in the long tail.
+**At 10x scale**, more data would likely improve performance significantly. The primary bottleneck is coverage: only 78.6% of test cards appear in training. More transactions increase the likelihood that any given card has prior sales history, improving both the ML model's card-level features and the exact-match baseline.
 
-**100x would help further, but with diminishing returns.** Eventually you'd saturate coverage for 2018 basketball cards, and the remaining prediction error would come from genuine price volatility — market shifts, subjectivity within a grade, auction dynamics — that no amount of historical data can eliminate. The core challenge is that card prices are **nonstationary**: more data from 2018–2019 doesn't necessarily help predict 2022 prices.
+**At 100x scale**, returns would diminish. Coverage of 2018 basketball cards would approach saturation, and remaining prediction error would be attributable to genuine price volatility — market shifts, subjectivity within grades, and auction dynamics — that no amount of historical data can eliminate. The fundamental challenge is nonstationarity: more data from 2018–2019 does not necessarily improve predictions for 2022 prices.
 
-### How did you prevent lookahead bias?
+### 9.5 Preventing Lookahead Bias
 
-Lookahead bias happens when a model accidentally uses information from the future during training — for example, if price statistics included sales that hadn't happened yet at the time of prediction. To prevent this, I used a strict **out-of-time split**: training data ends in May 2021, validation covers June–October 2021, and the test set starts in November 2021. All stateful preprocessing (card/subject/brand statistics) is computed exclusively from training data. The fitted `PreprocessingModel` stores these transformers and applies transform-only to validation and test sets — no future information leaks backward. The price estimator baselines follow the same rule, only looking up prices from the training period.
+All temporal dependencies in this analysis flow strictly forward. The training set ends in May 2021; the validation set spans June–October 2021; the test set begins in November 2021. All stateful preprocessing (card, subject, and brand statistics) is computed exclusively from training data. The fitted `PreprocessingModel` stores these transformers and applies transform-only operations to validation and test sets. The non-ML baseline follows the same protocol, looking up only prices from the training period.
 
-### How did you address overfitting?
+### 9.6 Addressing Overfitting
 
-Overfitting is when a model memorizes the training data too closely — it performs well on data it has already seen but poorly on new, unseen data. To combat this, I used multiple mechanisms:
-
-- **Early stopping** on validation RMSE (triggered at round 18)
-- **Regularization** — min_child_weight=30, gamma=0.1, L2 lambda=1.0, L1 alpha=0.1
-- **Subsampling** — 80% of rows and 80% of columns per tree
-
-Despite all of this, the model overfits quickly because the card-level price features create a **bimodal problem**: for seen cards, the historical price essentially gives the answer away; for unseen cards, those features are zero and provide no signal. With more time, next steps would include feature selection (RFE), hyperparameter tuning, and potentially **separate models or an ensemble** for seen vs. unseen cards.
+Despite multiple regularization mechanisms — early stopping on validation RMSE (triggered at round 18), minimum child weight of 30, L1/L2 regularization, and 80% row/column subsampling — the model overfits rapidly. The root cause is the card-level price features, which create a bimodal problem: for seen cards, the historical price essentially provides the answer; for unseen cards, these features are zero and carry no signal. Future work should explore feature selection (RFE), hyperparameter optimization, and potentially separate models or an ensemble approach for seen versus unseen cards.
