@@ -413,7 +413,7 @@ Two approaches are recommended for producing prediction intervals:
 
 ### 9.5 Preventing Lookahead Bias
 
-**All temporal dependencies in this analysis flow strictly forward**. The training set ends in May 2021; the validation set spans June–October 2021; the test set begins in November 2021. All stateful preprocessing (card, subject, and brand statistics) is computed exclusively from training data. The fitted `PreprocessingModel` stores these transformers and applies transform-only operations to validation and test sets. The non-ML baseline follows the same protocol, looking up only prices from the training period.
+**All temporal dependencies in this analysis flow strictly forward**. The training set ends in May 2021; the validation set spans June–October 2021; the test set begins in November 2021. All stateful preprocessing (card, subject, and brand statistics) is **computed exclusively from training data**. The fitted `PreprocessingModel` stores these transformers and applies transform-only operations to validation and test sets. The non-ML baseline follows the same protocol, looking up only prices from the training period.
 
 ### 9.6 Addressing Overfitting
 
