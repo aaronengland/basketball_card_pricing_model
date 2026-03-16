@@ -2,6 +2,10 @@
 
 ---
 
+## Purpose
+
+Build a pricing model for graded 2018 basketball cards using 100,000 historical transaction records, comparing a non-ML baseline against a machine learning approach to predict the next transaction price of a card.
+
 ## Pipeline Overview
 
 ```
