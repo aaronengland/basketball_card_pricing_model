@@ -390,7 +390,7 @@ Two approaches are recommended for producing prediction intervals:
 
 ### 9.2 Limitations
 
-- The non-ML baseline outperforms the XGBoost model on every evaluation metric, indicating the model does not add value beyond simple lookups for this dataset.
+- The **non-ML baseline outperforms the XGBoost model on every evaluation metric**, indicating the model does not add value beyond simple lookups for this dataset.
 - 21.4% of test cards have no prior transaction history, leaving the model without card-specific pricing signal for these observations.
 - The log transformation and model architecture effectively cap predictions around $3,000, while actual prices reach $4 million. Extreme values are unrecoverable.
 - No hyperparameter tuning or feature selection was performed.
