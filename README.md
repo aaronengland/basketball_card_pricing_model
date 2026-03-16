@@ -313,7 +313,7 @@ The negative R-squared indicates that the model does not explain variance in sal
   <img src="06_model_eval/output/actual_vs_predicted.png" alt="Model actual vs predicted" width="700"/>
 </p>
 
-**Figure 7.1.** Actual versus predicted prices on a log-log scale. The model compresses its prediction range to approximately $20–$3,000, while actual prices span from under $1 to over $4 million. For cards in the $50–$500 range, predictions cluster loosely around the diagonal, but the model systematically underpredicts high-value cards and overpredicts low-value cards. The narrow prediction band reflects the model's inability to capture the full range of price variation in the data.
+**Figure 7.2.** Actual versus predicted prices on a log-log scale. The model compresses its prediction range to approximately $20–$3,000, while actual prices span from under $1 to over $4 million. For cards in the $50–$500 range, predictions cluster loosely around the diagonal, but the model systematically underpredicts high-value cards and overpredicts low-value cards. The narrow prediction band reflects the model's inability to capture the full range of price variation in the data.
 
 ### 7.3 Residual Analysis
 
@@ -321,15 +321,14 @@ The negative R-squared indicates that the model does not explain variance in sal
   <img src="06_model_eval/output/residual_analysis.png" alt="Residual analysis" width="700"/>
 </p>
 
-**Figure 7.2.** Left: distribution of residuals (actual minus predicted) clipped to +/- $1,000. The distribution is approximately centered at zero but exhibits heavy positive tails, indicating that large underpredictions (actual >> predicted) are more common than large overpredictions. Right: residuals plotted against predicted values on a log scale. The fan-shaped pattern — with residual variance increasing at higher predicted values — suggests heteroscedasticity, which is expected given the multiplicative nature of price variation in this market.
-
+**Figure 7.3.** Left: distribution of residuals (actual minus predicted) clipped to +/- $1,000. The distribution is approximately centered at zero but exhibits heavy positive tails, indicating that large underpredictions (actual >> predicted) are more common than large overpredictions.
 ### 7.4 Error by Grade
 
 <p align="center">
   <img src="06_model_eval/output/error_by_grade.png" alt="Error breakdown by grade" width="700"/>
 </p>
 
-**Figure 7.3.** Mean Absolute Percentage Error (MAPE) by card grade. Lower grades (6.0, 7.0) exhibit extremely high MAPE, driven by small sample sizes and the tendency for low absolute-dollar errors to produce large percentage errors on inexpensive cards. Grade 9 and 10 cards — which constitute the vast majority of transactions — show more moderate MAPE values, though still exceeding 100% in most cases.
+**Figure 7.4.** Mean Absolute Percentage Error (MAPE) by card grade. Lower grades (6.0, 7.0) exhibit extremely high MAPE, driven by small sample sizes and the tendency for low absolute-dollar errors to produce large percentage errors on inexpensive cards. Grade 9 and 10 cards — which constitute the vast majority of transactions — show more moderate MAPE values, though still exceeding 100% in most cases.
 
 ### 7.5 Error by Price Range
 
@@ -337,7 +336,7 @@ The negative R-squared indicates that the model does not explain variance in sal
   <img src="06_model_eval/output/error_by_price_range.png" alt="Error breakdown by price range" width="700"/>
 </p>
 
-**Figure 7.4.** MAPE by actual price range. Cards in the $0–$50 range exhibit the highest MAPE (exceeding 250%), because even modest absolute-dollar prediction errors produce large percentage errors on low-priced items. As actual prices increase, MAPE generally decreases, with the $500–$1K and $1K+ ranges showing the lowest MAPE. However, these higher-value bins also have larger absolute errors, reflecting the difficulty of predicting prices for rare, high-value cards.
+**Figure 7.5.** MAPE by actual price range. Cards in the $0–$50 range exhibit the highest MAPE (exceeding 250%), because even modest absolute-dollar prediction errors produce large percentage errors on low-priced items. As actual prices increase, MAPE generally decreases, with the $500–$1K and $1K+ ranges showing the lowest MAPE. However, these higher-value bins also have larger absolute errors, reflecting the difficulty of predicting prices for rare, high-value cards.
 
 ### 7.6 Feature Importance
 
@@ -345,7 +344,7 @@ The negative R-squared indicates that the model does not explain variance in sal
   <img src="06_model_eval/output/feature_importance.png" alt="Feature importance" width="700"/>
 </p>
 
-**Figure 7.5.** Feature importance ranked by gain (the average reduction in loss contributed by each feature across all splits). Card-level median price is the dominant feature by a wide margin, confirming the model's heavy reliance on historical card-specific pricing. Subject-level median price and card transaction count also rank highly. Time-based and grade-based features contribute comparatively little, suggesting the model primarily functions as a lookup of historical price statistics rather than learning generalizable pricing patterns from card attributes.
+**Figure 7.6.** Feature importance ranked by gain (the average reduction in loss contributed by each feature across all splits). Card-level median price is the dominant feature by a wide margin, confirming the model's heavy reliance on historical card-specific pricing. Subject-level median price and card transaction count also rank highly. Time-based and grade-based features contribute comparatively little, suggesting the model primarily functions as a lookup of historical price statistics rather than learning generalizable pricing patterns from card attributes.
 
 ### 7.7 Seen vs. Unseen Cards
 
