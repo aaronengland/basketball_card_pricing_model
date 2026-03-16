@@ -1,5 +1,29 @@
 # Basketball Card Pricing Model
 
+---
+
+## Pipeline Overview
+
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────────┐     ┌────────────────┐     ┌──────────────┐     ┌──────────────┐
+│     EDA      │────▶│  Data Split  │────▶│ Preprocessing/FE │────▶│ Non-ML Baseline│────▶│   ML Model   │────▶│  Model Eval  │
+└─────────────┘     └──────────────┘     └──────────────────┘     └────────────────┘     └──────────────┘     └──────────────┘
+```
+
+**EDA** — Explore the distribution of prices, grades, brands, and players to understand data quality and market dynamics.
+
+**Data Split** — Partition the data chronologically into train/validation/test sets to prevent lookahead bias.
+
+**Preprocessing/FE** — Normalize text, impute missing values, and engineer aggregate price/count features per card, player, and brand.
+
+**Non-ML Baseline** — Establish a performance floor using a cascading lookup strategy from exact card match to global median.
+
+**ML Model** — Train an XGBoost gradient-boosted tree on the 13 engineered features to predict log-transformed sale price.
+
+**Model Eval** — Compare the ML model against the baseline across MAE, median AE, and R-squared on the held-out test set.
+
+---
+
 ## Abstract
 
 This study develops and evaluates a machine learning pipeline for estimating the sale price of graded 2018 basketball cards using 100,000 historical transaction records. We compare an XGBoost gradient-boosted tree model against a non-ML lookup-based baseline that cascades from exact card match to increasingly broad fallback strategies. Our findings indicate that the simple lookup baseline outperforms the XGBoost model across all evaluation metrics, achieving a median absolute error of $40.49 compared to $57.75 for the ML model. These results suggest that for fungible collectibles with sufficient transaction history, historical price lookup remains a highly competitive strategy that is difficult to surpass with standard supervised learning approaches.
