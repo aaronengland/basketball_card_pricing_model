@@ -8,12 +8,12 @@ Build a pricing model for graded 2018 basketball cards using 100,000 historical 
 
 ### Discussion Points
 
-- How would you generate a confidence interval for your prediction?
-- What are the shortcomings of your approach?
-- What features would you engineer if you had more time?
-- Would your model improve with 10x the data? 100x?
-- How did/would you deal with lookahead bias?
-- How did/would you deal with overfitting?
+- How would you generate a **confidence interval** for your prediction?
+- What are the **shortcomings** of your approach?
+- What **features would you engineer** if you had more time?
+- Would your **model improve with 10x the data? 100x?**
+- How did/would you deal with **lookahead bias**?
+- How did/would you deal with **overfitting**?
 
 ## Pipeline Overview
 
